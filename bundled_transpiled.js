@@ -70,6 +70,15 @@ this.appendEvents(result);}});}}}/***
      * Appends and sorts received events to the instance's data buffer
      * @param {Array} events: Array of pryv events
      */appendEvents(events){this.data=this.data.concat(events);this.sortByConducted();if(this.data.length>=this.eventsLimit){this.alertSubject.notify({type:"warning",content:"There are more than 1000 Events available, please refine your filter criteria!"});}log(this.data,"appendEvents");}}/***
+ * @project OltenEventViewerDev
+ * @author NSchuetz on 06/10/17
+ * Copyright (c) 06/10/17 University of Bern
+ *//**
+ * Used to get events from a specific user.
+ */class UsernameLatestEventData extends LatestEventData{constructor(controller,loader,userConnection,streams,eventsLimit=1000,displayLimit=15){super(controller,loader,userConnection,streams,eventsLimit,displayLimit);this.username=null;}update(filter,loadingPercentage){this.username=filter._settings.tags[0];let newFilter=new pryv.Filter({limit:500,streams:STREAMS});this.reloadData(newFilter,loadingPercentage);this.startDisplayPosition=0;}/***
+     * Loads events for the specified streams (this.streams) of all users of which mapping was retrieved and appends it.
+     */loadEventsFromMapping(filter=null,loadPercentage=50){let newFilter;if(filter===null){newFilter=new pryv.Filter({limit:this.eventsLimit,streams:this.streams});}else{newFilter=filter;}let result=[];let successCount=0;let target_count;if(this.username===null)target_count=this.mapping.length;else target_count=1;log(filter,"check Filter");for(let i=0;i<this.mapping.length;i++){let _mapping=this.mapping[i];if(this.username!==null&&this.username!==_mapping.name)continue;let settings={username:_mapping.name,auth:_mapping.token,domain:PRYV_SETTINGS.domain};let newConnection=new pryv.Connection(settings);this.loader.loadEvents(newConnection,newFilter,(err,events)=>{successCount++;events.forEach(e=>{result.push(e);});if(successCount===target_count){this.loadingSubject.notify(loadPercentage);// Add 50% to loading
+this.appendEvents(result);}});}}}/***
  * Data Model for Category View
  */class CategoryEventData extends GenericDataModel{/***
      * Constructor
@@ -94,6 +103,12 @@ let arr=Array.from(value);let sortedArr=arr.sort((a,b)=>{return b.time-a.time;})
      * @param {Array} events
      * @returns {Map}: {key: [events]}
      */extractCategories(events){log(events,"extractCategories");let result=new Map();for(let i=0;i<events.length;i++){let key;if(events[i].tags.length>1)key=events[i].tags[0];else key="Default";if(result.has(key)){//log(result.get(key), "extractCategories");
+result.get(key).add(events[i]);}else{let tempSet=new Set();result.set(key,tempSet.add(events[i]));}}return result;}}/***
+ * @project OltenEventViewerDev
+ * @author NSchuetz on 06/10/17
+ * Copyright (c) 06/10/17 University of Bern
+ */class UsernameCategoryEventData extends CategoryEventData{constructor(loader,userConnection,streams,limit=100){super(loader,userConnection,streams,limit);//this.data = new Map();  // data: {Map( {String} : {Set} )}
+}extractCategories(events){log(events,"extractCategories");let result=new Map();for(let i=0;i<events.length;i++){let key;if(events[i].connection.username.length>1)key=events[i].connection.username;else key="Default";if(result.has(key)){//log(result.get(key), "extractCategories");
 result.get(key).add(events[i]);}else{let tempSet=new Set();result.set(key,tempSet.add(events[i]));}}return result;}}/***
  * @project DashboardOltenQuestionnaires
  * @author NSchuetz on 14/08/17
