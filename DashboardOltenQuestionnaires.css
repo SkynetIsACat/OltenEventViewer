@@ -42,7 +42,7 @@ div.least-content {
     width: 300px;
     margin: 0 auto;
     transform: translateX(-50%);
-    z-index: 10;
+    z-index: 1051;
 }
 
 .nav-right {
@@ -92,6 +92,25 @@ a:hover
     text-align: center;
     line-height: 31px;
 }
+
+html {
+    overflow-y: scroll !important;
+}
+
+@media screen and (min-width: 1199px) {
+
+    #event-view-panel {
+        position: fixed !important;
+        width: 550px;
+    }
+
+    #event-view {
+        overflow-y: auto;
+        height: 75vh;
+    }
+}
+
+
 
 /*.category-panel {
     background-color: #EEEEEE
