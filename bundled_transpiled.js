@@ -37,11 +37,11 @@
      * @param {Object} listener: reference to respective listener
      */removeListener(listener){let toRemove=this.listeners.findIndex(e=>{return e===listener;});if(toRemove>-1)this.listeners.splice(toRemove,1);log("Listener to remove not found","PryvEventLoader");}}/***
  * Abstract Data Model class defining basic functionality for the Observer pattern and pryv event/mapping loading
- */class GenericDataModel{constructor(loader,userConnection,streams,limit){this.loader=loader;this.userConnection=userConnection;this.streams=streams;this.eventsLimit=limit;if(this.constructor===GenericDataModel){throw new Error("Cannot instantiate this class!");}this.subject=new Subject();this.loadingSubject=new Subject();this.mapping=null;}setSubject(subject){this.subject=subject;}getSubject(){return this.subject;}reloadMapping(connection){this.mapping=null;this.loadMapping(connection);}registerLoadingView(listener){this.loadingSubject.addListener(listener);}unregisterLoadingView(listener){this.loadingSubject.removeListener(listener);}/***
+ */class GenericDataModel{constructor(loader,userConnection,streams,limit){this.loader=loader;this.userConnection=userConnection;this.streams=streams;this.eventsLimit=limit;if(this.constructor===GenericDataModel)throw new Error("Cannot instantiate this class!");this.subject=new Subject();this.loadingSubject=new Subject();this.mapping=null;}setSubject(subject){this.subject=subject;}getSubject(){return this.subject;}reloadMapping(connection){this.mapping=null;this.loadMapping(connection);}registerLoadingView(listener){this.loadingSubject.addListener(listener);}unregisterLoadingView(listener){this.loadingSubject.removeListener(listener);}/***
      * Loads Pryv username and access tokens for all defined
      *
      * @param connection
-     */loadMapping(connection){this.loader.loadMapping(connection,(err,mapping)=>{log(err);log(mapping);this.mapping=mapping;this.loadEventsFromMapping();});}cleanData(){this.data=null;this.data=[];}/***
+     */loadMapping(connection,filter=null){this.loader.loadMapping(connection,(err,mapping)=>{log(err);log(mapping);this.mapping=mapping;this.loadEventsFromMapping(filter);});}cleanData(){this.data=null;this.data=[];}/***
      * Appends received events to the instance's data buffer and triggers observer notification
      * @param {Array} events: Array of pryv events
      */appendEvents(events){log(events,"appendEvents");//for (let i=0; i < events.length; i++) {
@@ -49,10 +49,31 @@
 //}
 this.data.concat(events);this.subject.notify(this.data);}/***
      * Reloads data
-     */reloadData(filter,percentageLoading){this.cleanData();if(this.mapping!==null)this.loadEventsFromMapping(filter,percentageLoading);else this.loadMapping(this.userConnection);}/***
+     */reloadData(filter,percentageLoading){this.cleanData();if(this.mapping!==null)this.loadEventsFromMapping(filter,percentageLoading);else this.loadMapping(this.userConnection,filter);}/***
      * Loads events for the specified streams (this.streams) of all users of which mapping was retrieved and appends it.
      */loadEventsFromMapping(filter=null,loadPercentage=50){let newFilter;if(filter===null){newFilter=new pryv.Filter({limit:this.eventsLimit,streams:this.streams});}else{newFilter=filter;}let result=[];let successCount=0;log(filter,"check Filter");for(let i=0;i<this.mapping.length;i++){let _mapping=this.mapping[i];let settings={username:_mapping.name,auth:_mapping.token,domain:PRYV_SETTINGS.domain};let newConnection=new pryv.Connection(settings);this.loader.loadEvents(newConnection,newFilter,(err,events)=>{successCount++;events.forEach(e=>{result.push(e);});if(successCount===this.mapping.length){this.loadingSubject.notify(loadPercentage);// Add 50% to loading
-this.appendEvents(result);}});}}}/***
+this.appendEvents(result);}});}}/**
+     * Deletes a pryv event.
+     * @param event: pryv event
+     */deleteEvent(event,cb){if(this.mapping===null){log("Can't delete user as user mapping is not available!","GenericDataModel");throw"Can't delete user as user mapping is not available!","GenericDataModel";}/*
+        const user = this.mapping.filter( (e) => {
+            console.log(e.name, event.connection.);
+            return e.name === event.id;
+        });
+
+
+
+        if (user === undefined)
+            throw("Can't find this user");
+
+
+        const connSettings = {
+            username: user.name,
+            auth: user.token,
+            domain: PRYV_SETTINGS.domain
+        };
+        *///const pryvConnection = new pryv.Connection(connSettings);
+event.connection.events.delete(event,(err,eventDeleted)=>{log(err,"eventDeleteError");log(eventDeleted,"eventDeleted");cb(eventDeleted);});}}/***
  * Data Model, responsible for handling latest event data
  */class LatestEventData extends GenericDataModel{/***
      * Constructor
@@ -75,7 +96,8 @@ this.appendEvents(result);}});}}}/***
  * Copyright (c) 06/10/17 University of Bern
  *//**
  * Used to get events from a specific user.
- */class UsernameLatestEventData extends LatestEventData{constructor(controller,loader,userConnection,streams,eventsLimit=1000,displayLimit=15){super(controller,loader,userConnection,streams,eventsLimit,displayLimit);this.username=null;}update(filter,loadingPercentage){this.username=filter._settings.tags[0];let newFilter=new pryv.Filter({limit:500,streams:STREAMS});this.reloadData(newFilter,loadingPercentage);this.startDisplayPosition=0;}/***
+ */class UsernameLatestEventData extends LatestEventData{constructor(controller,loader,userConnection,streams,eventsLimit=1000,displayLimit=15){super(controller,loader,userConnection,streams,eventsLimit,displayLimit);this.username=null;}update(filter,loadingPercentage,username=null){// this.username = filter._settings.tags[0];
+this.username=username;let newFilter=new pryv.Filter({limit:500,streams:STREAMS});console.log("filter: ",newFilter);this.reloadData(filter,loadingPercentage);this.startDisplayPosition=0;}/***
      * Loads events for the specified streams (this.streams) of all users of which mapping was retrieved and appends it.
      */loadEventsFromMapping(filter=null,loadPercentage=50){let newFilter;if(filter===null){newFilter=new pryv.Filter({limit:this.eventsLimit,streams:this.streams});}else{newFilter=filter;}let result=[];let successCount=0;let target_count;if(this.username===null)target_count=this.mapping.length;else target_count=1;log(filter,"check Filter");for(let i=0;i<this.mapping.length;i++){let _mapping=this.mapping[i];if(this.username!==null&&this.username!==_mapping.name)continue;let settings={username:_mapping.name,auth:_mapping.token,domain:PRYV_SETTINGS.domain};let newConnection=new pryv.Connection(settings);this.loader.loadEvents(newConnection,newFilter,(err,events)=>{successCount++;events.forEach(e=>{result.push(e);});if(successCount===target_count){this.loadingSubject.notify(loadPercentage);// Add 50% to loading
 this.appendEvents(result);}});}}}/***
@@ -87,7 +109,7 @@ this.appendEvents(result);}});}}}/***
      * @param {Array} streams: String Array specifying the streams to retrieve events for
      * @param {Number} limit:20, max number of events per Pryv request
      */constructor(loader,userConnection,streams,limit=100){super(loader,userConnection,streams,limit);this.data=new Map();// data: {Map( {String} : {Set} )}
-}init(){this.loadMapping(this.userConnection);}setStreams(streams){this.streams=streams;}setEventsLimit(limit){if(limit>0)this.eventsLimit=limit;else throw new Error("Event Limit must be greater than 0");}registerListener(listener){this.subject.addListener(listener);}removeListener(listener){this.subject.removeListener(listener);}/***
+}init(){this.loadMapping(this.userConnection);}update(filter){this.reloadData(filter,100);}cleanData(){this.data=new Map();}setStreams(streams){this.streams=streams;}setEventsLimit(limit){if(limit>0)this.eventsLimit=limit;else throw new Error("Event Limit must be greater than 0");}registerListener(listener){this.subject.addListener(listener);}removeListener(listener){this.subject.removeListener(listener);}/***
      * Exposes the data in list form to consumers
      * @returns {Array} array contain objects -> { {string} : array[events] }
      */getData(){let result=[];this.data.forEach((value,key,map)=>{// Display only the first event
@@ -129,7 +151,15 @@ result.get(key).add(events[i]);}else{let tempSet=new Set();result.set(key,tempSe
 render(eventObjects,elementId=this.elementId){let domElement=document.getElementById(elementId);let fragment=document.createDocumentFragment();log(eventObjects,"render");for(let i=0;i<eventObjects.length;i++){let e=eventObjects[i];let userName=e.connection.username;let filledBy=e.tags[0];let type;let filledOn=new Date(e.created*1000);let date=new Date(e.time*1000);// TODO: Check if there is a better way to do this
 let newEl=document.createElement("div");let template;if(e.tags.length>1)type=e.tags[1];else{type=e.tags[0];filledBy="Unbekannt";}date=date.toLocaleString();filledOn=filledOn.toLocaleString();// adjust margin for first element
 if(i===0){template=this.getTemplate(date,userName,filledBy,filledOn,"margin-top:15px;");}else template=this.getTemplate(date,userName,filledBy,filledOn);// create dom nodes and add respective event-listeners
-newEl.innerHTML=template;newEl.addEventListener("click",()=>{let modal=document.getElementById("event-content-modal");modal.innerHTML=this.getModalTemplate(userName,filledOn,date,filledBy,type,e.content);$(".event-content-modal").modal("show");});fragment.appendChild(newEl);}domElement.appendChild(fragment);}getTemplate(date,userName,filledBy,filledOn,style=""){// language=HTML
+newEl.innerHTML=template;newEl.addEventListener("click",()=>{let modal=document.getElementById("event-content-modal");if(e.streamId==="NOMAD_GeneralHealth"){modal.innerHTML=this.getModalTemplate(userName,filledOn,date,filledBy,type,e.content,e);}else if(e.streamId==="InselQuestionnaires"){modal.innerHTML=this.getInselModalTemplate(userName,filledOn,date,filledBy,type,e.content,e);}let deleteButton=document.getElementById("delete-event");deleteButton.addEventListener("click",()=>{this.controller.askRemoveEvent(e);});$(".event-content-modal").modal("show");});fragment.appendChild(newEl);}domElement.appendChild(fragment);}/**
+     * Event element template
+     * @param date the date the event occurred
+     * @param userName the name of the associated user
+     * @param filledBy by whom the event was reported
+     * @param filledOn when the event was reported
+     * @param style optional style attribute
+     * @returns {string}
+     */getTemplate(date,userName,filledBy,filledOn,style=""){// language=HTML
 return`
             <div class="animated fadeIn">
             <div class="list-group-item" style="${style}">
@@ -145,30 +175,62 @@ return`
             </div>
             <div class="list-group-separator"></div>
             </div>
-            `;}// TODO: Refactor modal creation into sub-parts
-getModalTemplate(username,dateCreated,dateFilled,createdBy,type,content){let tempContent=content.split(";");log(tempContent,"extractContent");return`
+            `;}getEventModifiyngTemplate(){return`
+            <div style="text-align: center; margin-top: 25px;">
+                <a id="delete-event" href="javascript:void(0)" class="btn btn-danger btn-fab"><i class="material-icons">delete</i></a>
+            </div>
+        `;}getInselModalTemplate(username,dateCreated,dateFilled,createdBy,type,content){let values=content.split(";").slice(3).join("<br>");return`
         <div>
-            <row>
+            <div class="row">
                 <div class="col-sm-6"><strong>Teilnehmer ID:</strong></div>
                 <div class="col-sm-6">${username}</div>
-            </row>
-            <row>
+            </div>
+            <div class="row">
                 <div class="col-sm-6"><strong>Erstellt am:</strong></div>
                 <div class="col-sm-6">${dateCreated}</div>
-            </row>
-            <row>
+            </div>
+            <div class="row">
                 <div class="col-sm-6"><strong>Ausgefüllt am:</strong></div>
                 <div class="col-sm-6">${dateFilled}</div>
-            </row>
-            <row>
+            </div>
+            <div class="row">
                 <div class="col-sm-6"><strong>Erstellt von:</strong></div>
                 <div class="col-sm-6">${createdBy}</div>
-            </row>
-            <row>
+            </div>
+            <div class="row">
                 <div class="col-sm-6"><strong>Typ:</strong></div>
                 <div class="col-sm-6">${type}</div>
-            </row>
-            <row>
+            </div>
+            <div class="row">
+                <div class="col-sm-6"><strong>Werte:</strong></div>
+                <div class="col-sm-6">${values}</div>
+            </div>
+            ${this.getEventModifiyngTemplate()}
+        </div>
+        `;}// TODO: Refactor modal creation into sub-parts
+getModalTemplate(username,dateCreated,dateFilled,createdBy,type,content,event=null){let tempContent=content.split(";");log(tempContent,"extractContent");return`
+        <div>
+            <div class="row">
+                <div class="col-sm-6"><strong>Teilnehmer ID:</strong></div>
+                <div class="col-sm-6">${username}</div>
+            </div>
+            <div class="row">
+                <div class="col-sm-6"><strong>Erstellt am:</strong></div>
+                <div class="col-sm-6">${dateCreated}</div>
+            </div>
+            <div class="row">
+                <div class="col-sm-6"><strong>Ausgefüllt am:</strong></div>
+                <div class="col-sm-6">${dateFilled}</div>
+            </div>
+            <div class="row">
+                <div class="col-sm-6"><strong>Erstellt von:</strong></div>
+                <div class="col-sm-6">${createdBy}</div>
+            </div>
+            <div class="row">
+                <div class="col-sm-6"><strong>Typ:</strong></div>
+                <div class="col-sm-6">${type}</div>
+            </div>
+            <div class="row2>
                 <div class="col-xs-12">
                     <br> <strong>Inhalt</strong> <br>
                     <br> 
@@ -279,8 +341,9 @@ getModalTemplate(username,dateCreated,dateFilled,createdBy,type,content){let tem
                     2.2.4 Haben sich Ihre Lebensgewohnheiten geändert? ${tempContent[44]}${tempContent[45]}<br>
                     ${tempContent[46]}
                  </div>
-            </row>
+            </div>
         </div>
+        ${this.getEventModifiyngTemplate()}
         `;}}/***
  * @project DashboardOltenQuestionnaires
  * @author NSchuetz on 14/08/17
@@ -297,24 +360,77 @@ this.clear();}update(data){this.clear();this.render(data);}}/***
  * @project DashboardOltenQuestionnaires
  * @author NSchuetz on 02/08/17
  * Copyright (c) 02/08/17 University of Bern
- */class AlertView{constructor(elementId="body"){this.TYPE="";let elRef;if(elementId==="body")elRef=document.body;else elRef=document.getElementById(elementId);this.elRef=elRef;this.actualAlert=null;}init(){// ...
-}update(data){this.clear();log("AlertView triggered","update");if(data.type===this.TYPE){this.clear();this.render(data.content);}}render(content){let template=this.getTemplate(content);let newEl=document.createElement("div");newEl.innerHTML=template;this.elRef.appendChild(newEl);this.actualAlert=newEl;}clear(){try{this.elRef.removeChild(this.actualAlert);}catch(e){log(e,"AlertView - clear");}}/***
-     * Should be abstract
-     */getTemplate(){// ... DO NOT IMPLEMENT
-}}class WarningAlertView extends AlertView{constructor(elementId="body"){super(elementId);this.TYPE="warning";}getTemplate(content){return`
-            <div class="alert alert-dismissible alert-warning" id="alert">
-                <button type="button" class="close" onclick="$('#alert').hide();">×</button>
+ */class AlertView{constructor(elementId="body",timer=null){this.TYPE="";let elRef;if(elementId==="body")elRef=document.body;else elRef=document.getElementById(elementId);this.elRef=elRef;this.actualAlerts=[];this.timer=timer;}init(){// ...
+}update(data){this.clear();log("AlertView triggered","update");if(data.type===this.TYPE){this.clear();this.render(data.content);}}render(content){let template=this.getTemplate(content);let newEl=document.createElement("div");newEl.innerHTML=template;this.elRef.appendChild(newEl);this.actualAlerts.push(newEl);this._setTimer();}_setTimer(){if(this.timer!==null){setTimeout(()=>{this.clear();},this.timer);}}clear(){try{this.actualAlerts.forEach(e=>{$(e).remove();});}catch(e){log(e,"AlertView - clear");}}getTemplate(content){return`
+            <div class="alert alert-dismissible alert-${this.TYPE}" class="alert" id="alert">
+                <button type="button" class="close" onclick="$('.alert').hide();">×</button>
                 <h4>Warning!</h4>
                 <strong>${content}</strong>
             </div>
-            `;}}class LoadingView{constructor(elementId,containerId,controller){this.elementId="#"+elementId;this.containerId="#"+containerId;this.controller=controller;// TODO: move state to its own model
+            `;}}class WarningAlertView extends AlertView{constructor(elementId="body",timer=3000){super(elementId,timer);this.TYPE="warning";}}class WarningConfirmationView extends WarningAlertView{constructor(controller,elementId="body"){super(elementId);this.controller=controller;this.TYPE="warning";}render(content,event){let template=this.getTemplate(content);let newEl=document.createElement("div");let confirmDeleteButton=document.createElement("div");confirmDeleteButton.innerHTML=this.getConfirmDeleteTemplate();newEl.innerHTML=template;newEl.children[0].appendChild(confirmDeleteButton);confirmDeleteButton.addEventListener("click",()=>{this.controller.removeEvent(event);});this.elRef.appendChild(newEl);this.actualAlerts.push(newEl);}getConfirmDeleteTemplate(){return`
+           <a onclick="$('.alert').hide();" title="Ok!" style="" href="javascript:void(0)" class="btn btn-success btn-raised">OK</a>
+        `;}}class SuccessAlertView extends AlertView{constructor(elementId="body",timer=3000){super(elementId,timer);this.TYPE="success";}}class LoadingView{constructor(elementId,containerId,controller){this.elementId="#"+elementId;this.containerId="#"+containerId;this.controller=controller;// TODO: move state to its own model
 this.actualPercentageShown=0;}init(){//...
-}update(data){log(data,"loadingView");this.actualPercentageShown+=data;this.render(this.actualPercentageShown);if(this.actualPercentageShown>=100){setTimeout(()=>{this.clear();this.actualPercentageShown=5;},500);}}render(percentage){$(this.containerId).show();$(this.elementId).css("width",this.toPercentageString(percentage));}clear(){$(this.containerId).hide();}toPercentageString(percentNumber){return percentNumber.toString()+"%";}}/***
+}update(data){log(data,"loadingView");this.actualPercentageShown+=data;this.render(this.actualPercentageShown);if(this.actualPercentageShown>=100){setTimeout(()=>{this.clear();this.actualPercentageShown=5;},500);}}render(percentage){$(this.containerId).show();$(this.elementId).css("width",this.toPercentageString(percentage));}clear(){$(this.containerId).hide();}toPercentageString(percentNumber){return percentNumber.toString()+"%";}}const Options=Object.freeze({WEEKLY_QUESTIONNAIRES:"NOMAD_GeneralHealth",ADDITIONAL_QUESTIONNAIRES:"InselQuestionnaires"});class OptionView{static get INTERNAL_ID(){return"select-options";}static get WIDTH(){return"100%";}static get MARGIN_LEFT(){return"50px";}static get MARGIN_TOP(){return"50px";}static get DATE_RANGE_ID(){return this.INTERNAL_ID+"-date-picker";}static get TIME_PICKER_ID(){return this.INTERNAL_ID+"-time-picker";}static get CATEGORY_PICKER_ID(){return this.INTERNAL_ID+"-category-picker";}static get SUBMIT_ID(){return this.INTERNAL_ID+"-submit";}static get RESET_ID(){return this.INTERNAL_ID+"-reset";}static get DEFAULT_SETTINGS(){return{fromTime:null,toTime:null,time:"00:00",streams:STREAMS,tags:[]};}constructor(id,controller){this.id=id;this.controller=controller;this.settings=OptionView.DEFAULT_SETTINGS;}init(){this.render(null);}update(data){}render(data){const parentEl=document.getElementById(this.id);let childEl=document.createElement("div");childEl.innerHTML=this.getTemplate();parentEl.appendChild(childEl);//$("." + OptionView.INTERNAL_ID).chosen({});
+$("select").chosen({width:"98%"});$("#"+OptionView.DATE_RANGE_ID).dateRangePicker();$("#"+OptionView.DATE_RANGE_ID).bind('datepicker-apply',(event,object)=>{this.settings.fromTime=object.date1.getTime()/1000;this.settings.toTime=object.date2.getTime()/1000;});this.addChangeListener(OptionView.TIME_PICKER_ID,()=>{this.settings.startTime=$("#"+OptionView.TIME_PICKER_ID).val();});document.getElementById(OptionView.SUBMIT_ID).addEventListener("click",()=>{this.settings.streams=$("#"+OptionView.CATEGORY_PICKER_ID).val();if(this.settings.streams===undefined)this.settings.streams=STREAMS;console.log(this.settings);this.controller.updateOptions(this.settings);this.controller.updateEventData();});document.getElementById(OptionView.RESET_ID).addEventListener("click",()=>{this.settings=OptionView.DEFAULT_SETTINGS;$("#"+OptionView.CATEGORY_PICKER_ID).val([]).trigger("chosen:updated");});}addChangeListener(id,callback){document.getElementById(id).addEventListener("change",callback);}clear(){let element=document.getElementById(this.elementId);if(element!==null){while(element.firstChild){element.removeChild(element.firstChild);}}}getTemplate(){return`
+        <div class="panel panel-default" style="margin-top: ${this.MARGIN_TOP}; ">
+          <div class="panel-body" style="">
+            <div class="col-lg-12">
+            
+                <div class="row" style="width: 100%;" id="options">
+   
+                    <div class="col-md-6">
+                    <div style="text-align: left; position:relative; top: 0px; margin-top: 10px;">
+                        <strong>Filter</strong>
+                        <select class="form-control ${OptionView.INTERNAL_ID}" id="${OptionView.CATEGORY_PICKER_ID}" multiple >
+                                       
+                          <option value="${Options.WEEKLY_QUESTIONNAIRES}">Wöchentliche Fragebögen</option>
+                          <option value="${Options.ADDITIONAL_QUESTIONNAIRES}">Zusätzliche Fragebögen</option>
+                          
+                        </select>
+                    </div>
+                    </div>
+                   
+                   <div class="col-md-2">
+                        <div title="Choose the time of the day - optional" style="text-align: center; position:relative; top: 0px; margin-top: 10px;">
+                        <strong>Tageszeit (optional)</strong>
+                            <input id="${OptionView.TIME_PICKER_ID}"  type="time" placeholder="Time"> 
+                        </div>  
+                    </div>
+                    
+                    
+                    <div class="col-md-1">
+                        <div style="text-align: center; position:relative; top: 0px; margin-top: 10px;">
+                           <a title="Choose a date range!" id="${OptionView.DATE_RANGE_ID}" href="javascript:void(0)" class="btn btn-default btn-fab"><i class="material-icons">date_range</i></a>                  
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-1">
+                        <div style="text-align: center; position:relative; top: 0px; margin-top: 10px;">
+                           <a title="Reset settings!" id="${OptionView.RESET_ID}" href="javascript:void(0)" class="btn btn-default btn-fab"><i class="material-icons">restore_page</i></a>                  
+                        </div>
+                    </div>
+                              
+                    <div class="col-md-2">
+                        <div style="text-align: center; position: relative; top: 0px; margin-top: 10px;">
+                            <a title="Apply settings!" style="width: 100%" id="${OptionView.SUBMIT_ID}" href="javascript:void(0)" class="btn btn-default btn-raised">OK</a>
+                        </div>
+                    </div>
+                    
+
+                </div>
+                
+            </div>
+          </div>
+        </div>
+        `;}}/***
  * @project DashboardOltenQuestionnaires
  * @author NSchuetz on 01/08/17
  * Copyright (c) 01/08/17 University of Bern
- */class MainController{constructor(userConnection,elementId,categoryElementId){this.elementId=elementId;this.userConnection=userConnection;this.categoryElementId=categoryElementId;this.views=null;this.models=null;}init(){let initInstance=function(obj,prop){obj[prop].init();};let eventLoader=new PryvEventLoader();let latestEventView=new LatestEventView(this.elementId,this);let latestEventData=new UsernameLatestEventData(this,eventLoader,this.userConnection,STREAMS);let alertViewTest=new WarningAlertView();let categoryData=new UsernameCategoryEventData(eventLoader,this.userConnection,STREAMS);let categoryView=new CategoryView("cat-events",this,this.categoryElementId);let latestEventViewHeader=new NavHeaderView(this,this.elementId+"-header","Aktuellste Events");let loadingView=new LoadingView("loading-view","loading-view-container",this);categoryData.registerListener(categoryView);latestEventData.registerListener(latestEventView);latestEventData.registerAlert(alertViewTest);latestEventData.registerLoadingView(loadingView);categoryData.registerLoadingView(loadingView);this.views={latestEventView:latestEventView,categoryView:categoryView,alertViewTest:alertViewTest,latestEventViewHeader:latestEventViewHeader,loadingView:loadingView};this.models={latestEventData:latestEventData,categoryData:categoryData};this.iterateObject(this.views,initInstance);this.iterateObject(this.models,initInstance);}remove(){this.iterateObject(this.views,(obj,prop)=>{try{obj[prop].clear();}catch(e){log(e,"logOut");}});}iterateObject(obj,f){for(let prop in obj){if(obj.hasOwnProperty(prop))f(obj,prop);}}loadNextEvents(){this.models.latestEventData.loadNext();}loadPreviousEvents(){this.models.latestEventData.loadPrevious();}onCategoryClicked(category){// TODO: allow switching between different categories
-this.views.loadingView.update(0);let filter;if(category==="Nicht kategorisiert"){filter=new pryv.Filter({limit:500,streams:STREAMS});}else{filter=new pryv.Filter({limit:500,streams:STREAMS,tags:[category]});}this.models.latestEventData.update(filter,100);}}(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f();}else if(typeof define==="function"&&define.amd){define([],f);}else{var g;if(typeof window!=="undefined"){g=window;}else if(typeof global!=="undefined"){g=global;}else if(typeof self!=="undefined"){g=self;}else{g=this;}g.pryv=f();}})(function(){var define,module,exports;return function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f;}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e);},l,l.exports,e,t,n,r);}return n[o].exports;}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s;}({1:[function(require,module,exports){},{}],2:[function(require,module,exports){if(typeof Object.create==='function'){// implementation from standard node.js 'util' module
+ *//**
+ * Controls broader logic of website interactions with the user.
+ */class MainController{constructor(userConnection,elementId,categoryElementId){this.elementId=elementId;this.userConnection=userConnection;this.categoryElementId=categoryElementId;this.views=null;this.models=null;this.options={streams:STREAMS,tags:[],fromTime:null,toTime:null};}init(){let initInstance=function(obj,prop){obj[prop].init();};let eventLoader=new PryvEventLoader();let latestEventView=new LatestEventView(this.elementId,this);let latestEventData=new UsernameLatestEventData(this,eventLoader,this.userConnection,STREAMS);let alertViewTest=new WarningAlertView();let alertViewSuccess=new SuccessAlertView();let confirmDeleteAlert=new WarningConfirmationView(this);let categoryData=new UsernameCategoryEventData(eventLoader,this.userConnection,STREAMS);let categoryView=new CategoryView("cat-events",this,this.categoryElementId);let latestEventViewHeader=new NavHeaderView(this,this.elementId+"-header","Aktuellste Events");let loadingView=new LoadingView("loading-view","loading-view-container",this);let optionView=new OptionView("option-view",this);categoryData.registerListener(categoryView);latestEventData.registerListener(latestEventView);latestEventData.registerAlert(alertViewTest);latestEventData.registerLoadingView(loadingView);categoryData.registerLoadingView(loadingView);this.views={latestEventView:latestEventView,categoryView:categoryView,alertViewTest:alertViewTest,latestEventViewHeader:latestEventViewHeader,loadingView:loadingView,optionView:optionView,warningConfirmationView:confirmDeleteAlert,successAlertView:alertViewSuccess};this.models={latestEventData:latestEventData,categoryData:categoryData};this.iterateObject(this.views,initInstance);this.iterateObject(this.models,initInstance);}remove(){this.iterateObject(this.views,(obj,prop)=>{try{obj[prop].clear();}catch(e){log(e,"logOut");}});}iterateObject(obj,f){for(let prop in obj){if(obj.hasOwnProperty(prop))f(obj,prop);}}loadNextEvents(){this.models.latestEventData.loadNext();}loadPreviousEvents(){this.models.latestEventData.loadPrevious();}updateOptions(options){this.options=options;}updateEventData(){const pFilter=new pryv.Filter({streams:this.options.streams,tags:this.options.tags,fromTime:this.options.fromTime,toTime:this.options.toTime});this.models.latestEventData.update(pFilter,100);this.models.categoryData.update(pFilter);}onCategoryClicked(category){// TODO: allow switching between different categories
+this.views.loadingView.update(0);let filter;if(category==="Nicht kategorisiert"){filter=new pryv.Filter({limit:500,streams:this.options.streams,tags:this.options.tags,fromTime:this.options.fromTime,toTime:this.options.toTime});}else{filter=new pryv.Filter({limit:500,streams:this.options.streams,tags:this.options.tags,fromTime:this.options.fromTime,toTime:this.options.toTime});}this.models.latestEventData.update(filter,100,category);}askRemoveEvent(event){log(event,"askRemoveEvent");this.views.warningConfirmationView.render("Do you really want to delete this event?",event);}removeEvent(event){this.models.categoryData.deleteEvent(event,deletedEvent=>{if(deletedEvent.id===event.id){this.views.successAlertView.render("Event successfully deleted!");this.updateEventData();}else this.views.alertViewTest.render("Could not delete the selected event!");});}}(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f();}else if(typeof define==="function"&&define.amd){define([],f);}else{var g;if(typeof window!=="undefined"){g=window;}else if(typeof global!=="undefined"){g=global;}else if(typeof self!=="undefined"){g=self;}else{g=this;}g.pryv=f();}})(function(){var define,module,exports;return function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f;}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e);},l,l.exports,e,t,n,r);}return n[o].exports;}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s;}({1:[function(require,module,exports){},{}],2:[function(require,module,exports){if(typeof Object.create==='function'){// implementation from standard node.js 'util' module
 module.exports=function inherits(ctor,superCtor){ctor.super_=superCtor;ctor.prototype=Object.create(superCtor.prototype,{constructor:{value:ctor,enumerable:false,writable:true,configurable:true}});};}else{// old school shim for old browsers
 module.exports=function inherits(ctor,superCtor){ctor.super_=superCtor;var TempCtor=function(){};TempCtor.prototype=superCtor.prototype;ctor.prototype=new TempCtor();ctor.prototype.constructor=ctor;};}},{}],3:[function(require,module,exports){// shim for using process in browser
 var process=module.exports={};var queue=[];var draining=false;var currentQueue;var queueIndex=-1;function cleanUpNextTick(){draining=false;if(currentQueue.length){queue=currentQueue.concat(queue);}else{queueIndex=-1;}if(queue.length){drainQueue();}}function drainQueue(){if(draining){return;}var timeout=setTimeout(cleanUpNextTick);draining=true;var len=queue.length;while(len){currentQueue=queue;queue=[];while(++queueIndex<len){if(currentQueue){currentQueue[queueIndex].run();}}queueIndex=-1;len=queue.length;}currentQueue=null;draining=false;clearTimeout(timeout);}process.nextTick=function(fun){var args=new Array(arguments.length-1);if(arguments.length>1){for(var i=1;i<arguments.length;i++){args[i-1]=arguments[i];}}queue.push(new Item(fun,args));if(queue.length===1&&!draining){setTimeout(drainQueue,0);}};// v8 likes predictible objects
